@@ -3,6 +3,7 @@ package memory
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	// "fmt"
 	"sort"
 
@@ -315,7 +316,13 @@ func (s *State) Update(items ...things.Item) error {
 		case things.ItemKindTombstone, things.ItemKindTombstonePlain:
 			target = &things.TombstoneActionItemPayload{}
 		default:
-			return fmt.Errorf("item %s has unsupported kind %q", rawItem.UUID, rawItem.Kind)
+			// Unknown/future kind (e.g. new Things wire formats such as
+			// "Task7" or internal sync markers such as "Command"): skip it
+			// rather than aborting the whole rebuild. The apply loop below
+			// already no-ops on kinds it doesn't recognize, so this only
+			// changes the validation loop to match that behavior.
+			log.Printf("things-cloud-sdk: skipping item %s with unsupported kind %q", rawItem.UUID, rawItem.Kind)
+			continue
 		}
 		if err := json.Unmarshal(rawItem.P, target); err != nil {
 			return fmt.Errorf("decode item %s (%s): %w", rawItem.UUID, rawItem.Kind, err)

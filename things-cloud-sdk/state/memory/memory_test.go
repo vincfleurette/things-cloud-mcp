@@ -495,16 +495,47 @@ func TestStateUpdateRejectsMalformedKnownItem(t *testing.T) {
 	}
 }
 
-func TestStateUpdateRejectsUnknownKind(t *testing.T) {
+func TestStateUpdateSkipsUnknownKind(t *testing.T) {
 	s := NewState()
+	// Unknown/future kinds (new Things wire formats such as "Task7", or
+	// internal sync markers such as "Command") must not abort the whole
+	// rebuild — they are skipped so every other item in the batch still
+	// applies. See issue #23.
 	err := s.Update(things.Item{
 		UUID:   "future-item",
 		Kind:   things.ItemKind("Task7"),
 		Action: things.ItemActionCreated,
 		P:      []byte(`{}`),
 	})
-	if err == nil {
-		t.Fatal("expected unknown kind error")
+	if err != nil {
+		t.Fatalf("unknown kind should be skipped, not error: %v", err)
+	}
+	if _, ok := s.Tasks["future-item"]; ok {
+		t.Fatal("unknown kind item should not have been applied to state")
+	}
+}
+
+func TestStateUpdateSkipsUnknownKindAlongsideKnownItems(t *testing.T) {
+	s := NewState()
+	err := s.Update(
+		things.Item{
+			UUID:   "cmd-1",
+			Kind:   things.ItemKind("Command"),
+			Action: things.ItemActionCreated,
+			P:      []byte(`{}`),
+		},
+		things.Item{
+			UUID:   "area-1",
+			Kind:   things.ItemKindArea,
+			Action: things.ItemActionCreated,
+			P:      []byte(`{"tt":"Area title"}`),
+		},
+	)
+	if err != nil {
+		t.Fatalf("unknown kind in batch should not block known items: %v", err)
+	}
+	if len(s.Areas) != 1 {
+		t.Fatalf("known item after an unknown-kind item should still apply, got %d areas", len(s.Areas))
 	}
 }
 
